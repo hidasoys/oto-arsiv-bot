@@ -557,11 +557,16 @@ def home():
     return "Bot aktif"
 
 
-def run_bot():
-    main()
-
-
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    threading.Thread(target=run_bot).start()
-    flask_app.run(host="0.0.0.0", port=port)
+
+    threading.Thread(
+        target=lambda: flask_app.run(
+            host="0.0.0.0",
+            port=port,
+            use_reloader=False
+        ),
+        daemon=True
+    ).start()
+
+    main()
