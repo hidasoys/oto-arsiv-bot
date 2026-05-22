@@ -1,8 +1,10 @@
 import os
 import re
 import json
+import threading
 from datetime import datetime
 
+from flask import Flask
 from dotenv import load_dotenv
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -53,22 +55,37 @@ def money(value):
     return f"{value:,.2f} ₺".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def register_fonts():
+    font_paths = [
+        ("Arial", "Arial-Bold", "C:/Windows/Fonts/arial.ttf", "C:/Windows/Fonts/arialbd.ttf"),
+        ("Arial", "Arial-Bold", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    ]
+
+    for regular_name, bold_name, regular_path, bold_path in font_paths:
+        if os.path.exists(regular_path) and os.path.exists(bold_path):
+            pdfmetrics.registerFont(TTFont(regular_name, regular_path))
+            pdfmetrics.registerFont(TTFont(bold_name, bold_path))
+            return regular_name, bold_name
+
+    return "Helvetica", "Helvetica-Bold"
+
+
 def get_sheet():
     scope = [
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive",
     ]
 
-    google_creds = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
+    google_credentials = os.getenv("GOOGLE_CREDENTIALS")
 
-    creds = ServiceAccountCredentials.from_json_keyfile_dict(
-        google_creds,
-        scope
-    )
+    if google_credentials:
+        creds_dict = json.loads(google_credentials)
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+    else:
+        creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
 
     client = gspread.authorize(creds)
     spreadsheet = client.open_by_key(SHEET_ID)
-
     return spreadsheet.worksheet(SHEET_NAME)
 
 
@@ -146,12 +163,11 @@ def build_detail_message(record):
 def create_service_pdf(record):
     os.makedirs("pdfler", exist_ok=True)
 
+    regular_font, bold_font = register_fonts()
+
     safe_plate = normalize_plate(record["plaka"])
     filename = f"servis_fisi_{safe_plate}_{record['row']}.pdf"
     filepath = os.path.join("pdfler", filename)
-
-    pdfmetrics.registerFont(TTFont("Arial", "C:/Windows/Fonts/arial.ttf"))
-    pdfmetrics.registerFont(TTFont("Arial-Bold", "C:/Windows/Fonts/arialbd.ttf"))
 
     price = parse_price(record["fiyat"])
     kdv = price * 0.20
@@ -172,19 +188,17 @@ def create_service_pdf(record):
     c.rect(width - 160, height - 105, 80, 35, fill=1, stroke=0)
 
     c.setFillColor(colors.black)
-    c.setFont("Arial-Bold", 22)
+    c.setFont(bold_font, 22)
     c.drawString(110, height - 75, "OTO SERVİS KAYDI")
 
-    c.setFont("Arial-Bold", 13)
+    c.setFont(bold_font, 13)
     c.drawString(55, height - 160, str(record["plaka"]))
-
     c.setStrokeColor(blue)
     c.setLineWidth(2)
     c.line(55, height - 170, 240, height - 170)
 
-    c.setFont("Arial-Bold", 11)
+    c.setFont(bold_font, 11)
     c.drawString(55, height - 200, str(record["sase"]))
-
     c.setStrokeColor(blue)
     c.line(55, height - 210, 260, height - 210)
 
@@ -199,7 +213,7 @@ def create_service_pdf(record):
     c.rect(460, table_y, 65, 35, fill=1, stroke=0)
     c.rect(525, table_y, 70, 35, fill=1, stroke=0)
 
-    c.setFont("Arial-Bold", 10)
+    c.setFont(bold_font, 10)
 
     c.setFillColor(colors.white)
     c.drawCentredString(87, table_y + 13, "NO")
@@ -221,11 +235,10 @@ def create_service_pdf(record):
     c.rect(460, row_y, 65, 45, fill=0)
     c.rect(525, row_y, 70, 45, fill=0)
 
-    c.setFont("Arial", 10)
+    c.setFont(regular_font, 10)
     c.drawCentredString(87, row_y + 18, "01")
 
     description = str(record["aciklama"])[:90]
-
     c.drawString(135, row_y + 24, description[:45])
 
     if len(description) > 45:
@@ -238,7 +251,7 @@ def create_service_pdf(record):
     summary_x = 390
     summary_y = 240
 
-    c.setFont("Arial-Bold", 11)
+    c.setFont(bold_font, 11)
     c.drawString(summary_x, summary_y, "TOPLAM:")
     c.drawRightString(565, summary_y, money(price))
 
@@ -255,7 +268,7 @@ def create_service_pdf(record):
     c.rect(summary_x + 95, summary_y - 85, 95, 22, fill=1, stroke=0)
 
     c.setFillColor(colors.white)
-    c.setFont("Arial-Bold", 12)
+    c.setFont(bold_font, 12)
     c.drawCentredString(summary_x + 142, summary_y - 80, money(total))
 
     c.save()
@@ -295,7 +308,6 @@ async def handle_plate(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Yeni servis kaydı oluşturmak ister misiniz?",
             reply_markup=keyboard
         )
-
         return
 
     records_cache[plate] = records
@@ -347,7 +359,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             build_detail_message(record),
             reply_markup=keyboard
         )
-
         return
 
     if data.startswith("pdf|"):
@@ -374,7 +385,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 filename=os.path.basename(filepath),
                 caption="📄 Servis fişi oluşturuldu."
             )
-
         return
 
     if data.startswith("back|"):
@@ -390,7 +400,6 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             build_list_message(plate, records),
             reply_markup=build_list_keyboard(plate, records)
         )
-
         return
 
 
@@ -399,7 +408,6 @@ async def start_new_record(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     _, plate = query.data.split("|")
-
     existing_records = get_records_by_plate(plate)
 
     context.user_data["new_record"] = {
@@ -408,7 +416,6 @@ async def start_new_record(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if existing_records:
         first_sase = existing_records[0]["sase"]
-
         context.user_data["new_record"]["sase"] = first_sase
 
         await query.message.reply_text(
@@ -431,33 +438,25 @@ async def start_new_record(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ask_sase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["new_record"]["sase"] = update.message.text.strip()
-
     await update.message.reply_text("Açıklamayı yazın:")
-
     return ASK_ACIKLAMA
 
 
 async def ask_aciklama(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["new_record"]["aciklama"] = update.message.text.strip()
-
     await update.message.reply_text("Kilometre bilgisini yazın:")
-
     return ASK_KM
 
 
 async def ask_km(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["new_record"]["kilometre"] = update.message.text.strip()
-
     await update.message.reply_text("İş emri numarasını yazın:")
-
     return ASK_IS_EMRI
 
 
 async def ask_is_emri(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["new_record"]["is_emri"] = update.message.text.strip()
-
     await update.message.reply_text("Fiyat bilgisini yazın:")
-
     return ASK_FIYAT
 
 
@@ -467,7 +466,6 @@ async def ask_fiyat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = context.user_data["new_record"]
 
     now = datetime.now()
-
     tarih = now.strftime("%d.%m.%Y")
     saat = now.strftime("%H:%M")
 
@@ -485,7 +483,6 @@ async def ask_fiyat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
 
     records = get_records_by_plate(data["plaka"])
-
     records_cache[data["plaka"]] = records
 
     await update.message.reply_text(
@@ -501,7 +498,6 @@ async def ask_fiyat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     context.user_data.pop("new_record", None)
-
     return ConversationHandler.END
 
 
@@ -545,23 +541,26 @@ def main():
     )
 
     app.add_handler(new_record_conversation)
-
-    app.add_handler(
-        CallbackQueryHandler(handle_button)
-    )
-
-    app.add_handler(
-        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_plate)
-    )
-
-    app.add_handler(
-        MessageHandler(filters.COMMAND, handle_plate)
-    )
+    app.add_handler(CallbackQueryHandler(handle_button))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_plate))
+    app.add_handler(MessageHandler(filters.COMMAND, handle_plate))
 
     print("Bot çalışıyor...")
-
     app.run_polling()
 
 
-if __name__ == "__main__":
+flask_app = Flask(__name__)
+
+
+@flask_app.route("/")
+def home():
+    return "Bot aktif"
+
+
+def run_bot():
     main()
+
+
+if __name__ == "__main__":
+    threading.Thread(target=run_bot).start()
+    flask_app.run(host="0.0.0.0", port=10000)
