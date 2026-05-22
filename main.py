@@ -58,17 +58,17 @@ def get_sheet():
         "https://spreadsheets.google.com/feeds",
         "https://www.googleapis.com/auth/drive",
     ]
-   
-   import json
 
-google_creds = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
+    google_creds = json.loads(os.getenv("GOOGLE_CREDENTIALS"))
 
-creds = ServiceAccountCredentials.from_json_keyfile_dict(
-    google_creds,
-    scope
-)
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(
+        google_creds,
+        scope
+    )
+
     client = gspread.authorize(creds)
     spreadsheet = client.open_by_key(SHEET_ID)
+
     return spreadsheet.worksheet(SHEET_NAME)
 
 
@@ -177,12 +177,14 @@ def create_service_pdf(record):
 
     c.setFont("Arial-Bold", 13)
     c.drawString(55, height - 160, str(record["plaka"]))
+
     c.setStrokeColor(blue)
     c.setLineWidth(2)
     c.line(55, height - 170, 240, height - 170)
 
     c.setFont("Arial-Bold", 11)
     c.drawString(55, height - 200, str(record["sase"]))
+
     c.setStrokeColor(blue)
     c.line(55, height - 210, 260, height - 210)
 
@@ -223,7 +225,9 @@ def create_service_pdf(record):
     c.drawCentredString(87, row_y + 18, "01")
 
     description = str(record["aciklama"])[:90]
+
     c.drawString(135, row_y + 24, description[:45])
+
     if len(description) > 45:
         c.drawString(135, row_y + 10, description[45:90])
 
@@ -254,23 +258,15 @@ def create_service_pdf(record):
     c.setFont("Arial-Bold", 12)
     c.drawCentredString(summary_x + 142, summary_y - 80, money(total))
 
-    c.setFillColor(blue)
-    c.rect(0, 55, 145, 25, fill=1, stroke=0)
-    c.rect(0, 30, 170, 25, fill=1, stroke=0)
-
-    c.setFillColor(colors.black)
-    c.setFont("Arial", 8)
-    c.drawString(50, 20, f"Oluşturma Tarihi: {datetime.now().strftime('%d.%m.%Y %H:%M')}")
-
     c.save()
+
     return filepath
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🚗 Oto Arşiv Bot aktif.\n\n"
-        "Plaka yazarak servis geçmişini sorgulayabilirsiniz.\n\n"
-        "Örnek: 54ABC123"
+        "Plaka yazarak servis geçmişini sorgulayabilirsiniz."
     )
 
 
@@ -286,7 +282,12 @@ async def handle_plate(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not records:
         keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton(text="➕ Yeni Kayıt Oluştur", callback_data=f"new|{plate}")]
+            [
+                InlineKeyboardButton(
+                    text="➕ Yeni Kayıt Oluştur",
+                    callback_data=f"new|{plate}"
+                )
+            ]
         ])
 
         await update.message.reply_text(
@@ -294,6 +295,7 @@ async def handle_plate(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Yeni servis kaydı oluşturmak ister misiniz?",
             reply_markup=keyboard
         )
+
         return
 
     records_cache[plate] = records
@@ -323,7 +325,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         record = next((r for r in records if r["row"] == row_number), None)
 
         if not record:
-            await query.edit_message_text("⚠️ Kayıt bulunamadı. Plakayı tekrar sorgulayın.")
+            await query.edit_message_text("⚠️ Kayıt bulunamadı.")
             return
 
         keyboard = InlineKeyboardMarkup([
@@ -345,6 +347,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             build_detail_message(record),
             reply_markup=keyboard
         )
+
         return
 
     if data.startswith("pdf|"):
@@ -360,7 +363,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         record = next((r for r in records if r["row"] == row_number), None)
 
         if not record:
-            await query.message.reply_text("⚠️ PDF oluşturulamadı. Kayıt bulunamadı.")
+            await query.message.reply_text("⚠️ PDF oluşturulamadı.")
             return
 
         filepath = create_service_pdf(record)
@@ -371,6 +374,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 filename=os.path.basename(filepath),
                 caption="📄 Servis fişi oluşturuldu."
             )
+
         return
 
     if data.startswith("back|"):
@@ -386,6 +390,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             build_list_message(plate, records),
             reply_markup=build_list_keyboard(plate, records)
         )
+
         return
 
 
@@ -394,6 +399,7 @@ async def start_new_record(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     _, plate = query.data.split("|")
+
     existing_records = get_records_by_plate(plate)
 
     context.user_data["new_record"] = {
@@ -402,6 +408,7 @@ async def start_new_record(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if existing_records:
         first_sase = existing_records[0]["sase"]
+
         context.user_data["new_record"]["sase"] = first_sase
 
         await query.message.reply_text(
@@ -424,25 +431,33 @@ async def start_new_record(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def ask_sase(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["new_record"]["sase"] = update.message.text.strip()
+
     await update.message.reply_text("Açıklamayı yazın:")
+
     return ASK_ACIKLAMA
 
 
 async def ask_aciklama(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["new_record"]["aciklama"] = update.message.text.strip()
+
     await update.message.reply_text("Kilometre bilgisini yazın:")
+
     return ASK_KM
 
 
 async def ask_km(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["new_record"]["kilometre"] = update.message.text.strip()
+
     await update.message.reply_text("İş emri numarasını yazın:")
+
     return ASK_IS_EMRI
 
 
 async def ask_is_emri(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["new_record"]["is_emri"] = update.message.text.strip()
+
     await update.message.reply_text("Fiyat bilgisini yazın:")
+
     return ASK_FIYAT
 
 
@@ -450,7 +465,9 @@ async def ask_fiyat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["new_record"]["fiyat"] = update.message.text.strip()
 
     data = context.user_data["new_record"]
+
     now = datetime.now()
+
     tarih = now.strftime("%d.%m.%Y")
     saat = now.strftime("%H:%M")
 
@@ -468,6 +485,7 @@ async def ask_fiyat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ])
 
     records = get_records_by_plate(data["plaka"])
+
     records_cache[data["plaka"]] = records
 
     await update.message.reply_text(
@@ -483,39 +501,65 @@ async def ask_fiyat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     context.user_data.pop("new_record", None)
+
     return ConversationHandler.END
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("new_record", None)
-    await update.message.reply_text("❌ Yeni kayıt oluşturma işlemi iptal edildi.")
+
+    await update.message.reply_text(
+        "❌ İşlem iptal edildi."
+    )
+
     return ConversationHandler.END
 
 
 def main():
-    if not BOT_TOKEN:
-        raise ValueError("BOT_TOKEN .env içinde boş.")
-
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     new_record_conversation = ConversationHandler(
-        entry_points=[CallbackQueryHandler(start_new_record, pattern=r"^new\|")],
+        entry_points=[
+            CallbackQueryHandler(start_new_record, pattern=r"^new\|")
+        ],
         states={
-            ASK_SASE: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_sase)],
-            ASK_ACIKLAMA: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_aciklama)],
-            ASK_KM: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_km)],
-            ASK_IS_EMRI: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_is_emri)],
-            ASK_FIYAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, ask_fiyat)],
+            ASK_SASE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, ask_sase)
+            ],
+            ASK_ACIKLAMA: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, ask_aciklama)
+            ],
+            ASK_KM: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, ask_km)
+            ],
+            ASK_IS_EMRI: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, ask_is_emri)
+            ],
+            ASK_FIYAT: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, ask_fiyat)
+            ],
         },
-        fallbacks=[MessageHandler(filters.Regex(r"^/iptal$"), cancel)],
+        fallbacks=[
+            MessageHandler(filters.Regex(r"^/iptal$"), cancel)
+        ],
     )
 
     app.add_handler(new_record_conversation)
-    app.add_handler(CallbackQueryHandler(handle_button))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_plate))
-    app.add_handler(MessageHandler(filters.COMMAND, handle_plate))
+
+    app.add_handler(
+        CallbackQueryHandler(handle_button)
+    )
+
+    app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, handle_plate)
+    )
+
+    app.add_handler(
+        MessageHandler(filters.COMMAND, handle_plate)
+    )
 
     print("Bot çalışıyor...")
+
     app.run_polling()
 
 
