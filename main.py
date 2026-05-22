@@ -548,7 +548,6 @@ def main():
     print("Bot çalışıyor...")
     app.run_polling()
 
-
 flask_app = Flask(__name__)
 
 
@@ -570,3 +569,5 @@ if __name__ == "__main__":
     ).start()
 
     main()
+
+
