@@ -562,5 +562,6 @@ def run_bot():
 
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
     threading.Thread(target=run_bot).start()
-    flask_app.run(host="0.0.0.0", port=10000)
+    flask_app.run(host="0.0.0.0", port=port)
